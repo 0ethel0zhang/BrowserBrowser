@@ -55,25 +55,35 @@ function controlLoop(apiKey: string, apiEndpoint: string) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0] && tabs[0].id) {
       const tabId = tabs[0].id;
-      chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error(chrome.runtime.lastError);
-          isRunning = false;
+      // Handshake with content script
+      chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
+        if (chrome.runtime.lastError || !response || response.type !== "pong") {
+          console.error("Content script not ready. Retrying in 1 second.");
+          setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
           return;
         }
-        const pageContent = response.content;
 
-        callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
-          console.log("Received action from LLM:", action);
-
-          if (action.action === "goal_complete") {
-            console.log("Goal is complete.");
+        // Content script is ready, proceed with getDOM
+        chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError);
             isRunning = false;
             return;
           }
+          const pageContent = response.content;
 
-          chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
-            setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
+          callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
+            console.log("Received action from LLM:", action);
+
+            if (action.action === "goal_complete") {
+              console.log("Goal is complete.");
+              isRunning = false;
+              return;
+            }
+
+            chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
+              setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
+            });
           });
         });
       });
@@ -85,6 +95,7 @@ function controlLoop(apiKey: string, apiEndpoint: string) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log("Message received in background script:", request);
   if (request.type === "goal") {
     if (isRunning) {
       console.log("Already running, ignoring new goal.");

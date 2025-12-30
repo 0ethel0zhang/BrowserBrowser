@@ -33,7 +33,9 @@ function performNavigate(url: string) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === "getDOM") {
+  if (request.type === "ping") {
+    sendResponse({ type: "pong" });
+  } else if (request.type === "getDOM") {
     console.log("Received getDOM request.");
     sendResponse({ content: document.documentElement.outerHTML });
   } else if (request.type === "action") {

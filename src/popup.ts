@@ -3,10 +3,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const chatInput = document.getElementById("chat-input") as HTMLInputElement;
 
   chatInput.addEventListener("keydown", (event) => {
+    console.log("Keydown event fired:", event.key);
     if (event.key === "Enter" && chatInput.value.trim() !== "") {
       const message = chatInput.value.trim();
       addMessage("You", message);
       chatInput.value = "";
+      console.log("Sending message to background script:", { type: "goal", goal: message });
       chrome.runtime.sendMessage({ type: "goal", goal: message });
     }
   });
