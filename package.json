@@ -1,0 +1,12 @@
+{
+  "name": "web-voyager",
+  "version": "1.0.0",
+  "description": "An intelligent web agent.",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.188",
+    "typescript": "^5.0.0"
+  }
+}
