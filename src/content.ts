@@ -58,6 +58,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     } else if (action.action === "navigate") {
       window.location.href = action.url;
+    } else if (action.action === "scroll") {
+      const { selector, direction } = action;
+      const element = selector ? document.querySelector(selector) : window;
+      if (element) {
+        const scrollAmount = direction === "up" ? -window.innerHeight * 0.9 : window.innerHeight * 0.9;
+        element.scrollBy(0, scrollAmount);
+      }
     }
     sendResponse({ status: "action complete" });
   }

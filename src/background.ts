@@ -3,6 +3,7 @@ console.log("Background script loaded.");
 
 let currentGoal = "";
 let isRunning = false;
+let activeTabId: number | null = null;
 
 // Function to call the LLM API
 async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageContent: string): Promise<any> {
@@ -22,10 +23,11 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
       Respond with a JSON object with one of the following actions:
       - { "action": "type", "selector": "[data-agent-selector='...']", "text": "text-to-type" }
       - { "action": "click", "selector": "[data-agent-selector='...']" }
+      - { "action": "scroll", "selector": "[data-agent-selector='...']", "direction": "up" | "down" } // Use selector for a specific element, or omit for window scroll
       - { "action": "navigate", "url": "url-to-navigate-to" }
       - { "action": "goal_complete" }
 
-      You MUST use the selector provided in the simplified DOM.
+      You MUST use the selector provided in the simplified DOM where applicable.
     `,
   };
 
@@ -52,53 +54,45 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
   }
 }
 
-function controlLoop(apiKey: string, apiEndpoint: string) {
+function controlLoop(apiKey: string, apiEndpoint: string, tabId: number) {
   if (!isRunning) {
+    activeTabId = null;
     return;
   }
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0] && tabs[0].id) {
-      const tabId = tabs[0].id;
-      // Handshake with content script
-      chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
-        if (chrome.runtime.lastError || !response || response.type !== "pong") {
-          console.error("Content script not ready. Retrying in 1 second.");
-          setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
+  // Handshake with content script
+  chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
+    if (chrome.runtime.lastError || !response || response.type !== "pong") {
+      console.error("Content script not ready or tab not found. Retrying in 1 second.");
+      setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId), 1000);
+      return;
+    }
+
+    // Content script is ready, proceed with getDOM
+    chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+        isRunning = false;
+        activeTabId = null;
+        return;
+      }
+      const pageContent = response.content;
+
+      callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
+        console.log("Received action from LLM:", action);
+
+        if (action.action === "goal_complete") {
+          console.log("Goal is complete.");
+          isRunning = false;
+          activeTabId = null;
           return;
         }
 
-        // Content script is ready, proceed with getDOM
-        chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error(chrome.runtime.lastError);
-            isRunning = false;
-            return;
-          }
-          const pageContent = response.content;
-
-          callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
-            console.log("Received action from LLM:", action);
-
-            if (action.action === "goal_complete") {
-              console.log("Goal is complete.");
-              isRunning = false;
-              return;
-            }
-
-            chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
-              setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
-            });
-          });
+        chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
+          setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId), 1000);
         });
       });
-    } else {
-      console.log("No active tab found, creating a new one.");
-      chrome.tabs.create({ url: "https://www.google.com" }, (newTab) => {
-        // After creating the tab, wait a moment for it to load, then retry the loop.
-        setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
-      });
-    }
+    });
   });
 }
 
@@ -115,7 +109,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.get(['apiKey', 'apiEndpoint'], (data) => {
       if (data.apiKey && data.apiEndpoint) {
         isRunning = true;
-        controlLoop(data.apiKey, data.apiEndpoint);
+
+        // Find an active tab or create a new one, then start the control loop.
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].id) {
+            activeTabId = tabs[0].id;
+            controlLoop(data.apiKey, data.apiEndpoint, activeTabId);
+          } else {
+            console.log("No active tab found, creating a new one.");
+            chrome.tabs.create({ url: "https://www.google.com" }, (newTab) => {
+              if (newTab && newTab.id) {
+                activeTabId = newTab.id;
+                // Wait for the tab to be ready before starting the loop
+                setTimeout(() => controlLoop(data.apiKey, data.apiEndpoint, activeTabId as number), 1000);
+              } else {
+                chrome.runtime.sendMessage({ type: "error", message: "Failed to create a new tab." });
+                isRunning = false;
+              }
+            });
+          }
+        });
+
       } else {
         chrome.runtime.sendMessage({ type: "error", message: "API key or endpoint not set. Please set them in the options page." });
       }
