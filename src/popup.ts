@@ -14,8 +14,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "apiKeyError") {
-      addMessage("Agent", request.message);
+    if (request.type === "error") {
+      addMessage("Agent", `Error: ${request.message}`);
     }
   });
 

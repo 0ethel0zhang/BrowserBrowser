@@ -12,15 +12,20 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
     prompt: `
       You are an intelligent web agent.
       Your goal is: "${goal}"
-      The current state of the page is:
+
+      The current state of the page is represented by a simplified DOM of interactive elements.
+      Each element has a \`selector\` attribute that you must use to identify it in your action.
+      Simplified DOM:
       ${pageContent}
 
-      Based on the current page content and the goal, what is the next action to take?
+      Based on the simplified DOM and your goal, what is the next action to take?
       Respond with a JSON object with one of the following actions:
-      - { "action": "type", "selector": "css-selector", "text": "text-to-type" }
-      - { "action": "click", "selector": "css-selector" }
+      - { "action": "type", "selector": "[data-agent-selector='...']", "text": "text-to-type" }
+      - { "action": "click", "selector": "[data-agent-selector='...']" }
       - { "action": "navigate", "url": "url-to-navigate-to" }
       - { "action": "goal_complete" }
+
+      You MUST use the selector provided in the simplified DOM.
     `,
   };
 
@@ -88,8 +93,11 @@ function controlLoop(apiKey: string, apiEndpoint: string) {
         });
       });
     } else {
-      console.log("No active tab found.");
-      isRunning = false;
+      console.log("No active tab found, creating a new one.");
+      chrome.tabs.create({ url: "https://www.google.com" }, (newTab) => {
+        // After creating the tab, wait a moment for it to load, then retry the loop.
+        setTimeout(() => controlLoop(apiKey, apiEndpoint), 1000);
+      });
     }
   });
 }
@@ -109,7 +117,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         isRunning = true;
         controlLoop(data.apiKey, data.apiEndpoint);
       } else {
-        chrome.runtime.sendMessage({ type: "apiKeyError", message: "API key or endpoint not set. Please set them in the options page." });
+        chrome.runtime.sendMessage({ type: "error", message: "API key or endpoint not set. Please set them in the options page." });
       }
     });
   }
