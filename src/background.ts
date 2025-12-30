@@ -4,6 +4,7 @@ console.log("Background script loaded.");
 let currentGoal = "";
 let isRunning = false;
 let activeTabId: number | null = null;
+const MAX_RETRIES = 10; // Maximum number of retries for connecting to the content script
 
 // Function to call the LLM API
 async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageContent: string): Promise<any> {
@@ -54,44 +55,63 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
   }
 }
 
-function controlLoop(apiKey: string, apiEndpoint: string, tabId: number) {
+function controlLoop(apiKey: string, apiEndpoint: string, tabId: number, retries = 0) {
   if (!isRunning) {
     activeTabId = null;
     return;
   }
 
-  // Handshake with content script
-  chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
-    if (chrome.runtime.lastError || !response || response.type !== "pong") {
-      console.error("Content script not ready or tab not found. Retrying in 1 second.");
-      setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId), 1000);
-      return;
-    }
-
-    // Content script is ready, proceed with getDOM
-    chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error(chrome.runtime.lastError);
+  // Check if the tab still exists before proceeding
+  chrome.tabs.get(tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab) {
+        console.error(`Target tab with ID ${tabId} not found. Stopping task.`);
+        chrome.runtime.sendMessage({ type: "error", message: `The tab was closed. Task stopped.` });
         isRunning = false;
         activeTabId = null;
         return;
-      }
-      const pageContent = response.content;
+    }
 
-      callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
-        console.log("Received action from LLM:", action);
-
-        if (action.action === "goal_complete") {
-          console.log("Goal is complete.");
-          isRunning = false;
-          activeTabId = null;
-          return;
+    // Handshake with content script
+    chrome.tabs.sendMessage(tabId, { type: "ping" }, (response) => {
+        if (chrome.runtime.lastError || !response || response.type !== "pong") {
+            if (retries >= MAX_RETRIES) {
+                console.error("Content script not ready after multiple retries. Stopping goal.");
+                chrome.runtime.sendMessage({ type: "error", message: "Could not connect to the page. It may be a protected page (e.g., chrome://) or has not loaded. Task stopped." });
+                isRunning = false;
+                activeTabId = null;
+            } else {
+                console.warn(`Content script not ready on tab ${tabId}. Retrying... (${retries + 1}/${MAX_RETRIES})`);
+                setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId, retries + 1), 1000);
+            }
+            return;
         }
 
-        chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
-          setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId), 1000);
+        // Content script is ready, proceed with getDOM
+        chrome.tabs.sendMessage(tabId, { type: "getDOM" }, (domResponse) => {
+          if (chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError);
+            isRunning = false;
+            activeTabId = null;
+            return;
+          }
+          const pageContent = domResponse.content;
+
+          callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
+            console.log("Received action from LLM:", action);
+
+            if (action.action === "goal_complete") {
+              console.log("Goal is complete.");
+              isRunning = false;
+              activeTabId = null;
+              return;
+            }
+
+            chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
+              // Reset retries to 0 for the next iteration of the loop
+              setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId, 0), 1000);
+            });
+          });
         });
-      });
     });
   });
 }
