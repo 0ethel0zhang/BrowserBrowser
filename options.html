@@ -1,14 +1,33 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Web Voyager Options</title>
-    <link rel="stylesheet" type="text/css" href="options.css" />
-  </head>
-  <body>
-    <h1>Web Voyager Options</h1>
-    <label for="api-key">API Key:</label>
-    <input type="text" id="api-key" />
-    <button id="save-button">Save</button>
-    <script src="dist/options.js"></script>
-  </body>
+
+<head>
+  <title>Web Voyager Options</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" type="text/css" href="options.css" />
+</head>
+
+<body>
+  <div id="app">
+    <header>
+      <h1>Settings</h1>
+    </header>
+    <main>
+      <section>
+        <label for="api-key">Gemini API Key</label>
+        <div class="input-group">
+          <input type="password" id="api-key" placeholder="Enter your Gemini API Key..." />
+          <button id="save-button" class="primary">Save</button>
+        </div>
+        <p class="hint">You can get your API key from the <a href="https://aistudio.google.com/app/apikey"
+            target="_blank">Google AI Studio</a>.</p>
+      </section>
+      <div id="status" class="status-hidden"></div>
+    </main>
+  </div>
+  <script src="dist/options.js"></script>
+</body>
+
 </html>

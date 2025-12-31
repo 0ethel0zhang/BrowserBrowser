@@ -3,18 +3,34 @@
   "name": "Web Voyager",
   "version": "1.0",
   "description": "An intelligent web agent.",
-  "permissions": ["activeTab", "tabs", "storage"],
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "options_page": "options.html",
   "background": {
     "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["dist/content.js"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/content.js"
+      ]
     }
   ],
   "action": {
-    "default_popup": "popup.html"
+    "default_title": "Open Web Voyager Side Panel"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
   }
 }

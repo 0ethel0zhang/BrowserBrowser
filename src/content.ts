@@ -11,12 +11,12 @@ function simplifyDOM() {
     let text = '';
 
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-        text = element.placeholder || element.ariaLabel || element.name || '';
+      text = element.placeholder || element.ariaLabel || element.name || '';
     } else if (element instanceof HTMLSelectElement) {
-        text = element.ariaLabel || element.name || '';
+      text = element.ariaLabel || element.name || '';
     }
     else {
-        text = element.innerText || element.ariaLabel || '';
+      text = element.innerText || element.ariaLabel || '';
     }
 
     simplifiedDOM += `<${tagName} selector="[data-agent-selector='${index}']">${text.trim()}</${tagName}>\n`;
@@ -30,15 +30,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.type === "ping") {
     sendResponse({ type: "pong" });
-    return true;
-  }
-
-  if (request.type === "getDOM") {
+  } else if (request.type === "getDOM") {
     sendResponse({ content: simplifyDOM() });
-    return true;
-  }
-
-  if (request.type === "action") {
+  } else if (request.type === "action") {
     const { action } = request;
     console.log("Performing action:", action);
 
@@ -49,6 +43,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           console.warn("Refusing to type into a password field.");
         } else {
           element.value = action.text;
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
     } else if (action.action === "click") {
