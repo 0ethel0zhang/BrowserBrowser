@@ -1,3 +1,5 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 // This is the background service worker.
 console.log("Background script loaded.");
 
@@ -35,11 +37,14 @@ function robustParseJSON(text: string): any {
   }
 }
 
-// Function to call the LLM API using the latest best practices (JSON mode + System Instructions)
+// Function to call the LLM API using the official SDK
 async function callLLM(apiKey: string, goal: string, pageContent: string, history: string[]): Promise<any> {
   console.log("Calling LLM with goal:", goal);
 
-  const systemPrompt = `
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash-lite",
+    systemInstruction: `
       You are an intelligent web agent.
       Your goal is to complete a sequence of actions that will contribute to the completion of the user's goal.
 
@@ -60,9 +65,25 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
       Action Guidelines:
       - Be efficient: Take the shortest path to the goal.
       - Avoid loops: Look at the History provided and do not repeat ineffective actions.
-      - If the page has the answer to the goal, return goal_complete.
-      - Ignore irrelevant links (Login, Donate, etc.) unless essential.
-    `;
+      - If the page has the answer to the goal, or if you have finished summarizing the requested info, return goal_complete.
+      - Ignore irrelevant links unless essential.
+    `,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "object",
+        properties: {
+          thought: { type: "string" },
+          action: { type: "string", enum: ["type", "click", "scroll", "navigate", "goal_complete"] },
+          selector: { type: "string" },
+          text: { type: "string" },
+          url: { type: "string" },
+          direction: { type: "string", enum: ["up", "down"] }
+        },
+        required: ["thought", "action"]
+      } as any
+    }
+  });
 
   const userPrompt = `
       Goal: "${goal}"
@@ -73,65 +94,17 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
       What is the next action to take? Respond with a single JSON object.
   `;
 
-  const requestBody = {
-    contents: [{
-      parts: [{
-        text: userPrompt
-      }]
-    }],
-    system_instruction: {
-      parts: [{
-        text: systemPrompt
-      }]
-    },
-    generationConfig: {
-      response_mime_type: "application/json",
-      response_schema: {
-        type: "OBJECT",
-        properties: {
-          thought: { type: "STRING" },
-          action: { type: "STRING", enum: ["type", "click", "scroll", "navigate", "goal_complete"] },
-          selector: { type: "STRING" },
-          text: { type: "STRING" },
-          url: { type: "STRING" },
-          direction: { type: "STRING", enum: ["up", "down"] }
-        },
-        required: ["thought", "action"]
-      }
-    }
-  };
-
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
-    });
+    const result = await model.generateContent(userPrompt);
+    const response = await result.response;
+    const actionText = response.text();
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || `API request failed with status ${response.status}`;
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-
-    if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      const actionText = data.candidates[0].content.parts[0].text;
-      try {
-        return robustParseJSON(actionText);
-      } catch (e) {
-        console.error("Failed to parse JSON from LLM response. Raw text:", actionText);
-        chrome.runtime.sendMessage({ type: "error", message: "Failed to understand the AI's response format." });
-        return { action: "goal_complete", thought: "Failed to parse AI response." };
-      }
-    } else {
-      console.error("Unexpected response format from LLM API:", data);
-      chrome.runtime.sendMessage({ type: "error", message: "Received empty response from AI." });
-      return { action: "goal_complete", thought: "Received empty response from AI." };
+    try {
+      return robustParseJSON(actionText);
+    } catch (e) {
+      console.error("Failed to parse JSON from LLM response. Raw text:", actionText);
+      chrome.runtime.sendMessage({ type: "error", message: "Failed to understand the AI's response format." });
+      return { action: "goal_complete", thought: "Failed to parse AI response." };
     }
 
   } catch (error: any) {

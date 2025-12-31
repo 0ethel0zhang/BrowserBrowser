@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "An intelligent web agent.",
   "scripts": {
-    "build": "tsc"
+    "build": "node build.js"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.188",
+    "esbuild": "^0.17.19",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1"
   }
 }

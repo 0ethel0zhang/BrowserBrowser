@@ -1,10 +1,21 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
+    "target": "es2020",
+    "module": "esnext",
+    "lib": [
+      "es2020",
+      "dom",
+      "webworker"
+    ],
     "outDir": "dist",
     "strict": true,
-    "types": ["chrome"]
+    "moduleResolution": "node",
+    "types": [
+      "chrome"
+    ],
+    "esModuleInterop": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
