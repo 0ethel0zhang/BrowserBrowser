@@ -60,8 +60,10 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
       Action Guidelines:
       - Be efficient: Take the shortest path to the goal.
       - Avoid loops: Look at the History provided and do not repeat ineffective actions.
+      - STRICTLY Avoid repeating the same action if the webpage remains unchanged. You may have selected the wrong web element or numerical label. Continuous use of the Wait is also NOT allowed.
       - If the page has the answer to the goal, return goal_complete.
       - Ignore irrelevant links (Login, Donate, etc.) unless essential.
+      - If you are not sure what to do, return goal_complete.
     `;
 
   const userPrompt = `
@@ -102,7 +104,7 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
   };
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
