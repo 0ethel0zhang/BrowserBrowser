@@ -7,11 +7,10 @@ let activeTabId: number | null = null;
 const MAX_RETRIES = 10; // Maximum number of retries for connecting to the content script
 
 // Function to call the LLM API
-async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageContent: string): Promise<any> {
+async function callLLM(apiKey: string, goal: string, pageContent: string): Promise<any> {
   console.log("Calling LLM with goal:", goal);
 
-  const requestBody = {
-    prompt: `
+  const prompt = `
       You are an intelligent web agent.
       Your goal is: "${goal}"
 
@@ -29,15 +28,22 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
       - { "action": "goal_complete" }
 
       You MUST use the selector provided in the simplified DOM where applicable.
-    `,
+    `;
+
+  const requestBody = {
+      contents: [{
+          parts: [{
+              text: prompt
+          }]
+      }]
   };
 
   try {
-    const response = await fetch(apiEndpoint, {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(requestBody)
     });
@@ -47,7 +53,15 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
     }
 
     const data = await response.json();
-    return data;
+
+    // Extract the action from the response
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
+        const actionText = data.candidates[0].content.parts[0].text;
+        return JSON.parse(actionText);
+    } else {
+        console.error("Unexpected response format from LLM API:", data);
+        return { action: "goal_complete" };
+    }
 
   } catch (error) {
     console.error("Error calling LLM API:", error);
@@ -55,7 +69,7 @@ async function callLLM(apiKey: string, apiEndpoint: string, goal: string, pageCo
   }
 }
 
-function controlLoop(apiKey: string, apiEndpoint: string, tabId: number, retries = 0) {
+function controlLoop(apiKey: string, tabId: number, retries = 0) {
   if (!isRunning) {
     activeTabId = null;
     return;
@@ -81,7 +95,7 @@ function controlLoop(apiKey: string, apiEndpoint: string, tabId: number, retries
                 activeTabId = null;
             } else {
                 console.warn(`Content script not ready on tab ${tabId}. Retrying... (${retries + 1}/${MAX_RETRIES})`);
-                setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId, retries + 1), 1000);
+                setTimeout(() => controlLoop(apiKey, tabId, retries + 1), 1000);
             }
             return;
         }
@@ -96,7 +110,7 @@ function controlLoop(apiKey: string, apiEndpoint: string, tabId: number, retries
           }
           const pageContent = domResponse.content;
 
-          callLLM(apiKey, apiEndpoint, currentGoal, pageContent).then((action) => {
+          callLLM(apiKey, currentGoal, pageContent).then((action) => {
             console.log("Received action from LLM:", action);
 
             if (action.action === "goal_complete") {
@@ -108,7 +122,7 @@ function controlLoop(apiKey: string, apiEndpoint: string, tabId: number, retries
 
             chrome.tabs.sendMessage(tabId, { type: "action", action: action }, () => {
               // Reset retries to 0 for the next iteration of the loop
-              setTimeout(() => controlLoop(apiKey, apiEndpoint, tabId, 0), 1000);
+              setTimeout(() => controlLoop(apiKey, tabId, 0), 1000);
             });
           });
         });
@@ -126,22 +140,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("Received new goal:", request.goal);
     currentGoal = request.goal;
 
-    chrome.storage.local.get(['apiKey', 'apiEndpoint'], (data) => {
-      if (data.apiKey && data.apiEndpoint) {
+    chrome.storage.local.get(['apiKey'], (data) => {
+      if (data.apiKey) {
         isRunning = true;
 
         // Find an active tab or create a new one, then start the control loop.
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs[0] && tabs[0].id) {
             activeTabId = tabs[0].id;
-            controlLoop(data.apiKey, data.apiEndpoint, activeTabId);
+            controlLoop(data.apiKey, activeTabId);
           } else {
             console.log("No active tab found, creating a new one.");
             chrome.tabs.create({ url: "https://www.google.com" }, (newTab) => {
               if (newTab && newTab.id) {
                 activeTabId = newTab.id;
                 // Wait for the tab to be ready before starting the loop
-                setTimeout(() => controlLoop(data.apiKey, data.apiEndpoint, activeTabId as number), 1000);
+                setTimeout(() => controlLoop(data.apiKey, activeTabId as number), 1000);
               } else {
                 chrome.runtime.sendMessage({ type: "error", message: "Failed to create a new tab." });
                 isRunning = false;
@@ -151,7 +165,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
 
       } else {
-        chrome.runtime.sendMessage({ type: "error", message: "API key or endpoint not set. Please set them in the options page." });
+        chrome.runtime.sendMessage({ type: "error", message: "API key not set. Please set it in the options page." });
       }
     });
   }
