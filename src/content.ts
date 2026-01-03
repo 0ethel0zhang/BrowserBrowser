@@ -1,10 +1,14 @@
 console.log("Content script loaded.");
 
-function simplifyDOM() {
-  const interactiveElements = Array.from(document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="link"]'));
+// Store image analysis results
+const imageAnalysisResults = new Map<string, string>();
+
+function simplifyDOM(analysisResults: Map<string, string>) {
+  const interactiveElements = Array.from(document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="link"], img'));
   let simplifiedDOM = "";
   interactiveElements.forEach((el, index) => {
     const element = el as HTMLElement;
+    const selector = `[data-agent-selector='${index}']`;
     element.setAttribute('data-agent-selector', String(index));
 
     const tagName = element.tagName.toLowerCase();
@@ -14,14 +18,50 @@ function simplifyDOM() {
       text = element.placeholder || element.ariaLabel || element.name || '';
     } else if (element instanceof HTMLSelectElement) {
       text = element.ariaLabel || element.name || '';
+    } else if (element instanceof HTMLImageElement) {
+      text = element.alt || element.ariaLabel || '';
     }
     else {
       text = element.innerText || element.ariaLabel || '';
     }
 
-    simplifiedDOM += `<${tagName} selector="[data-agent-selector='${index}']">${text.trim()}</${tagName}>\n`;
+    simplifiedDOM += `<${tagName} selector="${selector}">${text.trim()}</${tagName}>\n`;
+
+    if (analysisResults.has(selector)) {
+        const analysisText = analysisResults.get(selector);
+        simplifiedDOM += `<div data-analysis-for="${selector}">Image Analysis Result: ${analysisText}</div>\n`;
+    }
   });
   return simplifiedDOM;
+}
+
+async function getImageData(selector: string): Promise<string> {
+  const element = document.querySelector(selector) as HTMLImageElement;
+  if (!element || element.tagName !== 'IMG') {
+    throw new Error(`Element with selector "${selector}" is not an image.`);
+  }
+
+  const imageUrl = new URL(element.src, window.location.href).href;
+
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
+    const blob = await response.blob();
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    throw new Error(`Error fetching or processing image: ${error}`);
+  }
 }
 
 
@@ -31,7 +71,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "ping") {
     sendResponse({ type: "pong" });
   } else if (request.type === "getDOM") {
-    sendResponse({ content: simplifyDOM() });
+    sendResponse({ content: simplifyDOM(imageAnalysisResults) });
+  } else if (request.type === "storeAnalysisResult") {
+    imageAnalysisResults.set(request.selector, request.analysisText);
+    sendResponse({ status: "success" });
+  } else if (request.type === "getImageData") {
+    getImageData(request.selector)
+      .then(data => sendResponse({ status: "success", data }))
+      .catch(error => sendResponse({ status: "error", message: error.message }));
+    return true;
   } else if (request.type === "action") {
     const { action } = request;
     console.log("Performing action:", action);

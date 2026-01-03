@@ -51,15 +51,17 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
       
       Schema:
       - thought: string
-      - action: "type" | "click" | "scroll" | "navigate" | "goal_complete"
-      - selector: string (for type, click, scroll)
+      - action: "type" | "click" | "scroll" | "navigate" | "analyze_image" | "goal_complete"
+      - selector: string (for type, click, scroll, analyze_image)
       - text: string (for type)
       - url: string (for navigate)
       - direction: "up" | "down" (for scroll)
+      - question: string (for analyze_image)
 
       Action Guidelines:
       - Be efficient: Take the shortest path to the goal.
       - Avoid loops: Look at the History provided and do not repeat ineffective actions.
+      - Use `analyze_image` when you need to extract information from an image, such as text or a price. Provide a clear, specific question in the `question` field.
       - STRICTLY Avoid repeating the same action if the webpage remains unchanged. You may have selected the wrong web element or numerical label. Continuous use of the Wait is also NOT allowed.
       - If the page has the answer to the goal, return goal_complete.
       - Ignore irrelevant links (Login, Donate, etc.) unless essential.
@@ -92,11 +94,12 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
         type: "OBJECT",
         properties: {
           thought: { type: "STRING" },
-          action: { type: "STRING", enum: ["type", "click", "scroll", "navigate", "goal_complete"] },
+          action: { type: "STRING", enum: ["type", "click", "scroll", "navigate", "analyze_image", "goal_complete"] },
           selector: { type: "STRING" },
           text: { type: "STRING" },
           url: { type: "STRING" },
-          direction: { type: "STRING", enum: ["up", "down"] }
+          direction: { type: "STRING", enum: ["up", "down"] },
+          question: { type: "STRING" }
         },
         required: ["thought", "action"]
       }
@@ -142,6 +145,57 @@ async function callLLM(apiKey: string, goal: string, pageContent: string, histor
     return { action: "goal_complete", thought: `AI Error: ${error.message}` };
   }
 }
+
+async function callVisionLLM(apiKey: string, question: string, imageData: string): Promise<string> {
+  console.log("Calling Vision LLM with question:", question);
+
+  const requestBody = {
+    contents: [{
+      parts: [
+        { text: question },
+        {
+          inline_data: {
+            mime_type: "image/jpeg", // Assuming JPEG, adjust if needed
+            data: imageData
+          }
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.1,
+    }
+  };
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error?.message || `API request failed with status ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+
+    if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      return data.candidates[0].content.parts[0].text.trim();
+    } else {
+      console.error("Unexpected response format from Vision LLM API:", data);
+      throw new Error("Received empty or malformed response from Vision AI.");
+    }
+
+  } catch (error: any) {
+    console.error("Error calling Vision LLM API:", error);
+    chrome.runtime.sendMessage({ type: "error", message: `Vision AI Error: ${error.message}` });
+    return `Vision AI Error: ${error.message}`;
+  }
+}
+
 
 // Function to check if a URL is protected
 function isProtectedUrl(url: string | undefined): boolean {
@@ -300,13 +354,37 @@ async function controlLoop(apiKey: string, tabId: number, retries = 0) {
     safeSendMessage({ type: "thought", thought: actionResponse.thought });
 
     // Perform action
-    chrome.tabs.sendMessage(tabId, { type: "action", action: actionResponse }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error("Error performing action:", chrome.runtime.lastError);
-      }
-      // Continue loop
-      setTimeout(() => controlLoop(apiKey, tabId, 0), 1000);
-    });
+    if (actionResponse.action === "analyze_image") {
+      safeSendMessage({ type: "thought", thought: "🖼️ Analyzing image..." });
+      chrome.tabs.sendMessage(tabId, { type: "getImageData", selector: actionResponse.selector }, (response) => {
+        if (chrome.runtime.lastError || response.status === "error") {
+          console.error("Error getting image data:", chrome.runtime.lastError || response.message);
+          safeSendMessage({ type: "error", message: "Could not get image data from page." });
+          setTimeout(() => controlLoop(apiKey, tabId, 0), 1000); // Continue loop even on error
+        } else {
+          callVisionLLM(apiKey, actionResponse.question, response.data).then(analysisResult => {
+            console.log("Vision LLM analysis result:", analysisResult);
+            // Send the result to the content script to be stored
+            chrome.tabs.sendMessage(tabId, {
+              type: "storeAnalysisResult",
+              selector: actionResponse.selector,
+              analysisText: analysisResult
+            }, () => {
+              // Once stored, continue the loop to get the updated DOM
+              setTimeout(() => controlLoop(apiKey, tabId, 0), 1000);
+            });
+          });
+        }
+      });
+    } else {
+      chrome.tabs.sendMessage(tabId, { type: "action", action: actionResponse }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Error performing action:", chrome.runtime.lastError);
+        }
+        // Continue loop
+        setTimeout(() => controlLoop(apiKey, tabId, 0), 1000);
+      });
+    }
   });
 }
 
