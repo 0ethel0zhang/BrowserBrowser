@@ -7,7 +7,7 @@ Follow along using the [lecture slides](https://docs.google.com/presentation/d/1
 4. Load the folder to Chrome Extensions & `Load unpacked`<br/>
 5. Create/Copy your Gemini API key (Create using AI studio) to `Extension Options`<br/>
 6. Debug is possible under developer mode with `Service Worker`<br/>
-    <tab>You should be able to see `Background script loaded.` in the Dev Tools.</tab>
+    &ensp;You should be able to see `Background script loaded.` in the Dev Tools.<br/>
 
 <br/>
 You should be able to activate the extension & see it as a side panel, ready to help:<br/>
