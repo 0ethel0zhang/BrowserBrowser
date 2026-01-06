@@ -17,6 +17,6 @@ This is an demo of the the agent browsing in action
 <video src="https://github.com/user-attachments/assets/52736b5e-dfd2-48e2-8021-28199e9b1aa9" width="320" height="240" controls></video>
 
 <br/>
-For a more detailed walkthrough, please check out [the tutorial on YouTube]https://www.youtube.com/watch?v=Hb2mml1s_HY&list=PLN-3HsBWxJ-DrMnR8E1qVZBQkcP_ZbZG2&index=18
+For a more detailed walkthrough, please check out [the tutorial on YouTube](https://www.youtube.com/watch?v=Hb2mml1s_HY&list=PLN-3HsBWxJ-DrMnR8E1qVZBQkcP_ZbZG2&index=18).
 
 
