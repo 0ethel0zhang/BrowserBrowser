@@ -14,9 +14,9 @@ You should be able to activate the extension & see it as a side panel, ready to 
 <img width="198" height="281" alt="Screenshot 2026-01-02 at 12 06 06 AM" src="https://github.com/user-attachments/assets/61770755-a01d-4002-8e43-44f0ff25cafb" />
 
 This is an demo of the the agent browsing in action
-<video src="[path/to/video.mp4](https://github.com/user-attachments/assets/52736b5e-dfd2-48e2-8021-28199e9b1aa9)" width="320" height="240" controls></video>
+<video src="https://github.com/user-attachments/assets/52736b5e-dfd2-48e2-8021-28199e9b1aa9" width="320" height="240" controls></video>
 
 <br/>
-For a more detailed walkthrough, please check out [the tutorial on YouTube](https://www.youtube.com/watch?v=Hb2mml1s_HY&list=PLN-3HsBWxJ-DrMnR8E1qVZBQkcP_ZbZG2&index=18)
+For a more detailed walkthrough, please check out [the tutorial on YouTube]https://www.youtube.com/watch?v=Hb2mml1s_HY&list=PLN-3HsBWxJ-DrMnR8E1qVZBQkcP_ZbZG2&index=18
 
 
