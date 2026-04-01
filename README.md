@@ -1,5 +1,10 @@
 Follow along using the [lecture slides](https://docs.google.com/presentation/d/1hf7bmTekLmkXKvdYtqq5Xs4-PpUwRjFvNKPqR4kmbAQ/edit?slide=id.p1#slide=id.p1)
 
+Credits: 
+The Implementation was made possible by the following papers:
+- [WebVoyager](https://arxiv.org/pdf/2401.13919)
+- [Set-of-Marks Prompting](https://arxiv.org/pdf/2310.11441)
+
 <h2>Instructions:</h2>
 1. Download/Clone the repository<br/>
 2. Run `npm install`<br/>
